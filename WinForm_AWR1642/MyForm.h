@@ -2,6 +2,11 @@
 #include"PropertyDefine.h"
 #include <Windows.h>  
 #include<fstream>
+#include<cmath>
+#include<complex>
+#define _USE_MATH_DEFINES
+
+MMWProfileCfg  MMWCfg;
 namespace WinForm_AWR1642 {
 
 	using namespace std; 
@@ -55,6 +60,7 @@ namespace WinForm_AWR1642 {
 	private: System::Windows::Forms::Label^  label2;
 	private: System::Windows::Forms::ComboBox^  comBox_DataCOM;
 	private: System::IO::Ports::SerialPort^  DataSerialPort;
+	private: System::Windows::Forms::Timer^  timer1;
 
 	private: System::ComponentModel::IContainer^  components;
 
@@ -85,6 +91,7 @@ namespace WinForm_AWR1642 {
 			this->label2 = (gcnew System::Windows::Forms::Label());
 			this->comBox_DataCOM = (gcnew System::Windows::Forms::ComboBox());
 			this->DataSerialPort = (gcnew System::IO::Ports::SerialPort(this->components));
+			this->timer1 = (gcnew System::Windows::Forms::Timer(this->components));
 			(cli::safe_cast<System::ComponentModel::ISupportInitialize^>(this->chart1))->BeginInit();
 			this->menuStrip1->SuspendLayout();
 			this->SuspendLayout();
@@ -119,6 +126,12 @@ namespace WinForm_AWR1642 {
 			// 
 			// chart1
 			// 
+			chartArea1->AxisX->Interval = 1;
+			chartArea1->AxisX->Maximum = 10;
+			chartArea1->AxisX->Minimum = -10;
+			chartArea1->AxisY->Interval = 1;
+			chartArea1->AxisY->Maximum = 10;
+			chartArea1->AxisY->Minimum = 0;
 			chartArea1->Name = L"ChartArea1";
 			this->chart1->ChartAreas->Add(chartArea1);
 			legend1->Name = L"Legend1";
@@ -168,6 +181,11 @@ namespace WinForm_AWR1642 {
 			this->comBox_DataCOM->Size = System::Drawing::Size(121, 23);
 			this->comBox_DataCOM->TabIndex = 5;
 			this->comBox_DataCOM->SelectedIndexChanged += gcnew System::EventHandler(this, &MyForm::comBox_DataCOM_SelectedIndexChanged);
+			// 
+			// timer1
+			// 
+			this->timer1->Interval = 10;
+			this->timer1->Tick += gcnew System::EventHandler(this, &MyForm::timer1_Tick);
 			// 
 			// MyForm
 			// 
@@ -222,28 +240,241 @@ namespace WinForm_AWR1642 {
 	char line[100];
 	while (fp.getline(line, sizeof(line), '\n')) {
 		System::String^ str = gcnew String(line);
-		CmdSerialPort->WriteLine(str);
-		Sleep(500);
+		
+		if (str != "")
+		{
+			CmdSerialPort->WriteLine(str);
+			CmdSerialPort->ReadTo("Done");
+			Sleep(100);
+			cli::array<String^>^result;
+			cli::array<Char>^sep = gcnew cli::array<Char>{ ' ' };
+			result=str->Split(sep, StringSplitOptions::RemoveEmptyEntries);
+			System::String^ string_temp = result[0];
+		
+	
+			if (result[0] == "dfeDataOutputMode")MMWCfg.dfeDataOutputMode=Convert::ToInt32(result[1]);
+			if (result[0] == "channelCfg")
+			{
+				unsigned char Rx = Convert::ToByte(result[1]);
+				unsigned char Tx = Convert::ToByte(result[2]);
+				for (uint16_t i = 0; i < 4; i++)
+				{
+				   unsigned char mask = 0x01;
+					mask = mask << i;
+					MMWCfg.NumOf_Rx += (Rx & mask)>>i;
+					MMWCfg.NumOf_Tx += (Tx & mask) >> i;
+				}				
+			}
+			if (result[0] == "adcCfg")
+			{
+				MMWCfg.ADCBits = Convert::ToInt16(result[1]);
+				MMWCfg.ADCOutputFormat = Convert::ToInt16(result[2]);
+			}
+			if (result[0] == "adcbufCfg")
+			{
+				MMWCfg.ADCInputFormat = Convert::ToByte(result[1]);
+				MMWCfg.ADCInputIQ = Convert::ToByte(result[2]);
+				MMWCfg.ADCInputInterleaved = Convert::ToByte(result[3]);
+				MMWCfg.ADCInputChirpThreshold = Convert::ToByte(result[4]);
+			}
+			if (result[0] == "profileCfg")
+			{
+				MMWCfg.StartFreq= Convert::ToInt32(result[2]);
+				MMWCfg.IdleTime = Convert::ToInt32(result[3]);
+				MMWCfg.ADCStartTime = Convert::ToInt32(result[4]);
+				MMWCfg.RampEndTime = Convert::ToDouble(result[5]);
+				MMWCfg.TXOutputPower = Convert::ToInt32(result[6]);
+				MMWCfg.TXPhaseShift = Convert::ToInt32(result[7]);
+				MMWCfg.FrequencySlop = Convert::ToDouble(result[8]);
+				MMWCfg.TXStartTime = Convert::ToInt32(result[9]);
+				MMWCfg.ADCSamples = Convert::ToInt32(result[10]);
+				MMWCfg.ADCSampleFreq = Convert::ToDouble(result[11]);
+				MMWCfg.HPF1 = Convert::ToInt32(result[12]);
+				MMWCfg.HPF2 = Convert::ToInt32(result[13]);
+				MMWCfg.RXGain = Convert::ToInt32(result[14]);
+				RangeFFTSize = MMWCfg.ADCSamples;
+			}
+			if (result[0] == "frameCfg")
+			{
+				MMWCfg.FrameChirpStartIndex = Convert::ToByte(result[1]);
+				MMWCfg.FrameChirpEndIndex = Convert::ToByte(result[2]);
+				MMWCfg.FrameChirpNumber = Convert::ToByte(result[3]);
+				MMWCfg.FrameNumbers = Convert::ToByte(result[4]);
+				MMWCfg.FramePeriod = Convert::ToDouble(result[5]);
+				MMWCfg.FrameTriggered = Convert::ToByte(result[6]);
+				MMWCfg.FrameTriggerDelay = Convert::ToByte(result[7]);
+				DopplerFFTSize = MMWCfg.FrameChirpNumber*MMWCfg.NumOf_Rx;
+			}
+		}
+		
 		delete str;
+		
 	}
 	DataSerialPort->Open();
 	thread = gcnew Thread(gcnew ThreadStart(this, &MyForm::ReadFromRadar));
 	thread->Start();
+	timer1->Enabled = true;
+	timer1->Start();
 }
 	private:void ReadFromRadar()
 	{
 	
-		cli::array<unsigned char>^ReadBuf = gcnew cli::array<unsigned char>(DATA_PORT_QUEUE_SIZE);
+		/*unsigned char ReadBuffer[DATA_PORT_QUEUE_SIZE] = {0};*/
+		
 		int ReadSize;
 		while (true)
 		{
-			if (DataSerialPort->BytesToRead > 0)
+		int ByteCounter;
+		cli::array<Byte>^ReadBuf = gcnew cli::array<Byte>(DATA_PORT_QUEUE_SIZE);
+		if (DataSerialPort->BytesToRead > 0)
+		{	
+			ReadSize = DataSerialPort->Read(ReadBuf,0, DATA_PORT_QUEUE_SIZE);
+			int a = 999;
+		}	
+		if (ReadSize > 0)
 			{
-				ReadSize = DataSerialPort->Read(ReadBuf,0, DATA_PORT_QUEUE_SIZE); 
-			}	
-			if (ReadSize > 0)
-				int a = 999;
+					
+				uint32_t PatternIndex = 88888;//設定一個不可能發生的數值，判斷有沒有收到頭碼
+				for (uint16_t i = 0; i < ReadSize; i++)
+				{
+					if (ReadBuf[i] == 2 && ReadBuf[i + 1] == 1 && ReadBuf[i + 2] == 4 && ReadBuf[i + 3] == 3 && ReadBuf[i + 4] == 6 && ReadBuf[i + 5] == 5 && ReadBuf[i + 6] == 8 && ReadBuf[i + 7] == 7)
+					{
+						PatternIndex = i;
+						break;
+					}
+				}
+				if (PatternIndex != 88888)
+				{
+				   pin_ptr<System::Byte> p = &ReadBuf[0];
+				   unsigned char* ReadBufferIndex = p;
+				   ReadBufferIndex +=  PatternIndex;
+				   ByteCounter += PatternIndex;
+
+				   memcpy(&header, ReadBufferIndex, sizeof(header));
+				   ReadBufferIndex += sizeof(DataPacketHeadStruct);
+				   ByteCounter += sizeof(DataPacketHeadStruct);
+				   if (header.NumTLVs >= 4) MessageBox::Show("!");
+				   for (uint16_t i = 0; i < header.NumTLVs; i++)
+				   {
+					   MmwDemo_output_message_TLV TLV;
+					   memcpy(&TLV, ReadBufferIndex,sizeof(MmwDemo_output_message_TLV));
+					   ReadBufferIndex += sizeof(MmwDemo_output_message_TLV);
+					   ByteCounter += sizeof(MmwDemo_output_message_TLV);
+					   switch (TLV.type)
+					   {
+					   case MMWDEMO_OUTPUT_MSG_DETECTED_POINTS:
+					   { 
+						  
+						   MmwDemo_output_message_dataObjDescr ObjDescribe;
+						   memcpy(&ObjDescribe, ReadBufferIndex,sizeof(MmwDemo_output_message_dataObjDescr));
+						   ReadBufferIndex += sizeof(MmwDemo_output_message_dataObjDescr);
+						   ByteCounter += sizeof(MmwDemo_output_message_dataObjDescr);
+						   float div = (float)1.0 / (1 << ObjDescribe.xyzQFormat);
+						    ObjData = new  ObjDataStruct[ObjDescribe.numDetetedObj];
+						   for (uint16_t j = 0; j < ObjDescribe.numDetetedObj; j++)
+						   {
+							  ObjStruct TempObj;
+							  memcpy(&TempObj, ReadBufferIndex,sizeof(ObjStruct));
+							  ReadBufferIndex += sizeof(ObjStruct);
+							  ByteCounter += sizeof(ObjStruct);
+							  ObjData[j].RangeIndex = TempObj.RangeIndex;
+							  ObjData[j].DopplerIndex = TempObj.DopplerIndex;
+							  ObjData[j].x = TempObj.x * div;
+							  ObjData[j].y = TempObj.y * div;
+							  ObjData[j].z = TempObj.z * div;
+							  ObjData[j].r= (float)sqrt(pow(ObjData[j].x, 2) + pow(ObjData[j].y, 2) + pow(ObjData[j].z, 2));
+							 
+							  ObjData[j].thetaH = (float)atan2(ObjData[j].x ,ObjData[j].y);
+							  ObjData[j].thetaV = (float)atan2(ObjData[j].z,ObjData[j].y);
+							  ObjData[j].vr = (float)(TempObj.DopplerIndex * 1.0000000000000000);
+							  ObjData[j].vx =ObjData[j].vr * (float)sin(ObjData[j].thetaV);
+							  ObjData[j].vy =ObjData[j].vr * (float)cos(ObjData[j].thetaV) * (float)sin(ObjData[j].thetaH);
+							  ObjData[j].rcs = (float)(TempObj.PeakValue * 1.00000000000000);
+						   }
+						   
+					   }
+					   break;
+					   
+					   case MMWDEMO_OUTPUT_MSG_RANGE_PROFILE:
+					   {
+						   float div = (float)(1.0 / (1 << 8));
+						   unsigned short temp;
+						  
+						   RangeProfile = new float[RangeFFTSize];
+						   for (uint16_t j = 0; j < RangeFFTSize; j++)
+						   {
+							   memcpy(&temp, ReadBufferIndex, sizeof(unsigned short));
+							   RangeProfile[j] = temp;
+							   ReadBufferIndex += sizeof(unsigned short);
+							   ByteCounter+= sizeof(unsigned short);
+						   }
+						   delete[] RangeProfile;
+					   }
+					   break;
+
+					   case MMWDEMO_OUTPUT_MSG_NOISE_PROFILE:
+					   {
+						   float div = (float)(1.0 / (1 << 8));
+						   NoiseProfile = new float[RangeFFTSize];
+						   unsigned short temp;
+						   for (uint16_t j = 0; j < RangeFFTSize; j++)
+						   {
+							   memcpy(&temp, ReadBufferIndex, sizeof(unsigned short));
+							   NoiseProfile[j] = temp;
+							   ReadBufferIndex += sizeof(unsigned short);
+							   ByteCounter += sizeof(unsigned short);
+						   }
+						   delete[] NoiseProfile;
+					   }
+					   break;
+
+					   case MMWDEMO_OUTPUT_MSG_AZIMUT_STATIC_HEAT_MAP:
+					   {
+						   int VirtualAntenna =MMWCfg.NumOf_Tx*MMWCfg.NumOf_Rx;
+						   AzimuthHeatmap = new Complex[VirtualAntenna];
+						   Complex temp;
+						   for (uint16_t j = 0; j < RangeFFTSize * VirtualAntenna; j++)
+						   {
+							   memcpy(&temp, ReadBufferIndex, sizeof(Complex));
+							   AzimuthHeatmap[j] = temp;
+							   ReadBufferIndex += sizeof(Complex);
+							   ByteCounter += sizeof(Complex);
+						   }
+						   delete[]AzimuthHeatmap;
+					   }
+					   break;
+					   case MMWDEMO_OUTPUT_MSG_RANGE_DOPPLER_HEAT_MAP:
+					   {
+						   RangeDopplerHeatmap = new unsigned char[RangeFFTSize * DopplerFFTSize];
+						   float div = (float)(1.0 / (1 << 8));
+						   unsigned char temp;
+						   for (uint16_t j = 0; j < RangeFFTSize * DopplerFFTSize; j++)
+						   {
+							   memcpy(&temp,ReadBufferIndex,sizeof(unsigned char));
+							   RangeDopplerHeatmap[i] = temp;
+							   ReadBufferIndex += sizeof(unsigned char);
+							   ByteCounter += sizeof(unsigned char);
+						   }
+						   delete[] RangeDopplerHeatmap;
+					   }
+					   break;
+					  
+					   case MMWDEMO_OUTPUT_MSG_STATS:
+					   {
+						   MmwDemo_output_message_stats state;
+						   memcpy(&state, ReadBufferIndex, sizeof(MmwDemo_output_message_stats));
+						   ReadBufferIndex += sizeof(MmwDemo_output_message_stats);
+						   ByteCounter += sizeof(MmwDemo_output_message_stats);
+					   }
+					   break;
+					   default:
+					   break;
+					   }					    
+				   }
+		     	}
 			
+			}
+			delete ReadBuf;
 		}
 	}
 private: System::Void comBox_DataCOM_SelectedIndexChanged(System::Object^  sender, System::EventArgs^  e) {
@@ -253,6 +484,12 @@ private: System::Void comBox_DataCOM_SelectedIndexChanged(System::Object^  sende
 	DataSerialPort->Parity = Parity::None;
 	DataSerialPort->DataBits = 8;
 	DataSerialPort->StopBits = StopBits::One;
+}
+	
+private: System::Void timer1_Tick(System::Object^  sender, System::EventArgs^  e) {
+	chart1->Series["Series1"]->Points->Clear();
+	for(uint16_t i=0;i<header.NumDetectedObj;i++)
+		chart1->Series["Series1"]->Points->AddXY(ObjData[i].x, ObjData[i].y);
 }
 };
 }
